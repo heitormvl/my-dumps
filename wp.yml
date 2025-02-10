@@ -1,44 +1,40 @@
-services:
-services:
-  wordpress:
-    image: wordpress
-    restart: always
-    ports:
-      - 8080:80
-    environment:
-      WORDPRESS_DB_HOST: db
-      WORDPRESS_DB_USER: exampleuser
-      WORDPRESS_DB_PASSWORD: examplepass
-      WORDPRESS_DB_NAME: exampledb
-      # WORDPRESS_DEBUG: true
-
-    volumes:
-      - wp:/var/www/html
-
-  db:
-    image: mysql:5.7
-    restart: always
-    environment:
-      MYSQL_DATABASE: exampledb
-      MYSQL_USER: exampleuser
-      MYSQL_PASSWORD: examplepass
-      MYSQL_RANDOM_ROOT_PASSWORD: '1'
-    volumes:
-      - db:/var/lib/mysql
-    expose:
-      - 3306
-      - 33060
-
-volumes:
-  wp:
-    driver: local
-    driver_opts:
-      type: 'none'
-      o: 'bind'
-      device: '/home/heito/wordpress/wp'
-  db:
-    driver: local
-    driver_opts:
-      type: 'none'
-      o: 'bind'
-      device: '/home/heito/wordpress/db'
+SELECT
+    D.CHAVE_LOJA AS "Chave Loja",
+    D.NOME_GRUPO AS "Nome do Grupo",
+    D.MUNICIPIO AS "Município",
+    D.UF,
+    D.QUADRANTE AS "Quadrante",
+    D.TIPO_POSTO AS "Tipo Posto",
+    D.SCORE_DECISAO AS "Score Decisão",
+    D.RATING AS "Rating",
+    D.DESC_PERFIL AS "Descrição Perfil",
+    D.DESC_PERFIL_DETALHE AS "Descrição Perfil Detalhe",
+    D.DATA_ULT_TRANSACAO AS "Data da Última Transação",
+    D.FAIXA_TRX AS "Faixa TRX",
+    D.DATA_BLOQUEIO AS "Data do Bloqueio",
+    CONVERT(date, CAST(CAST(CA.dtbase AS INT) AS CHAR(6)) + '01') AS "Data do Cluster",
+    CA.cluster_corbans_final AS "Cluster",
+    BA.[Média Transações] AS "Média Trx Negócio"
+FROM
+    DATALAKE.dbo.DL_BRADESCO_EXPRESSO D
+CROSS APPLY (
+    SELECT TOP 1
+        C.dtbase,
+        C.cluster_corbans_final
+    FROM
+        DATALAKE.dbo.CLUSTER_FULL C
+    WHERE
+        C.CHAVE_LOJA = D.CHAVE_LOJA
+        AND C.dtbase < (YEAR(D.DATA_BLOQUEIO) * 100 + MONTH(D.DATA_BLOQUEIO))
+    ORDER BY
+        C.dtbase DESC
+) CA
+CROSS APPLY (
+    SELECT AVG(I.QTD_TRX_NEGOCIO_DTLHES * 1.0) AS [Média Transações]
+    FROM DATAWAREHOUSE.DBO.TB_INDICADORES_BE I
+    WHERE I.CHAVE_LOJA = D.CHAVE_LOJA
+      AND I.ANO_MES >= DATEADD(MONTH, -3, DATEFROMPARTS(YEAR(D.DATA_BLOQUEIO), MONTH(D.DATA_BLOQUEIO), 1))
+      AND I.ANO_MES < DATEFROMPARTS(YEAR(D.DATA_BLOQUEIO), MONTH(D.DATA_BLOQUEIO), 1)
+) BA
+WHERE
+    D.DATA_BLOQUEIO IS NOT NULL;
